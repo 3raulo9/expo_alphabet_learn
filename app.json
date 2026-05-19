@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Alphabet Learn",
+    "slug": "alphabet-learn",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0d0d1a"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0d0d1a"
+      },
+      "package": "com.alphabetlearn.app"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
