@@ -8,6 +8,7 @@ import {
   Animated,
   StatusBar,
   Alert,
+  PanResponder,
 } from 'react-native';
 import * as Speech from 'expo-speech';
 import { ALPHABETS } from '../data/alphabets';
@@ -22,10 +23,55 @@ export default function LearnScreen({ alphabetId, onBack }) {
   const soundScale = useRef(new Animated.Value(1)).current;
   const contentAnim = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(0)).current;
+  const panX = useRef(new Animated.Value(0)).current;
 
   const letter = letters[index];
   const isRTL = alphabet.direction === 'rtl';
   const total = letters.length;
+
+  const goTo = (newIndex) => {
+    Speech.stop();
+    setIsSpeaking(false);
+    setIndex(newIndex);
+  };
+
+  const prev = () => {
+    const newIndex = index > 0 ? index - 1 : total - 1;
+    goTo(newIndex);
+  };
+
+  const next = () => {
+    const newIndex = index < total - 1 ? index + 1 : 0;
+    goTo(newIndex);
+  };
+
+  const navigationRef = useRef({ prev, next });
+
+  useEffect(() => {
+    navigationRef.current = { prev, next };
+  }, [index, total]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (e, { dx }) => {
+        panX.setValue(dx);
+      },
+      onPanResponderRelease: (e, { dx }) => {
+        const threshold = 50;
+        if (dx > threshold) {
+          navigationRef.current.prev();
+        } else if (dx < -threshold) {
+          navigationRef.current.next();
+        }
+        Animated.spring(panX, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+      },
+    })
+  ).current;
 
   useEffect(() => {
     Animated.loop(
@@ -84,15 +130,6 @@ export default function LearnScreen({ alphabetId, onBack }) {
     }
   }, [letter, alphabet, isSpeaking]);
 
-  const goTo = (newIndex) => {
-    Speech.stop();
-    setIsSpeaking(false);
-    setIndex(newIndex);
-  };
-
-  const prev = () => goTo(index > 0 ? index - 1 : total - 1);
-  const next = () => goTo(index < total - 1 ? index + 1 : 0);
-
   const toggleShuffle = () => {
     if (shuffled) {
       setLetters(alphabet.letters);
@@ -118,6 +155,7 @@ export default function LearnScreen({ alphabetId, onBack }) {
     transform: [
       { translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
       { scale: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      { translateX: panX },
     ],
   };
 
@@ -130,30 +168,51 @@ export default function LearnScreen({ alphabetId, onBack }) {
       </View>
 
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={onBack} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={styles.backBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
 
         <View style={styles.topCenter}>
-          <Animated.Text style={[styles.alphabetName, { color: alphabet.color, transform: [{ scale: glowScale }] }]}> 
+          <Animated.Text
+            style={[
+              styles.alphabetName,
+              { color: alphabet.color, transform: [{ scale: glowScale }] },
+            ]}
+          >
             {alphabet.flag}  {alphabet.name}
           </Animated.Text>
           <Text style={styles.nativeName}>{alphabet.nativeName}</Text>
         </View>
 
-        <TouchableOpacity onPress={toggleShuffle} style={styles.shuffleBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity
+          onPress={toggleShuffle}
+          style={styles.shuffleBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <Text style={[styles.shuffleIcon, shuffled && { color: alphabet.color }]}>⇄</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: alphabet.color }]} />
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${progress * 100}%`, backgroundColor: alphabet.color },
+          ]}
+        />
       </View>
       <Text style={styles.progressLabel}>
         {index + 1} / {total}
       </Text>
 
-      <Animated.View style={[styles.cardArea, contentTransform]}>
+      <Animated.View
+        style={[styles.cardArea, contentTransform]}
+        {...panResponder.panHandlers}
+      >
         <FlashCard
           key={`${alphabetId}-${index}`}
           letter={letter}
@@ -173,10 +232,10 @@ export default function LearnScreen({ alphabetId, onBack }) {
             ]}
             activeOpacity={0.8}
           >
-            <Text style={[styles.soundIcon, { color: alphabet.color }]}> 
+            <Text style={[styles.soundIcon, { color: alphabet.color }]}>
               {isSpeaking ? '■' : '♪'}
             </Text>
-            <Text style={[styles.soundLabel, { color: alphabet.color }]}> 
+            <Text style={[styles.soundLabel, { color: alphabet.color }]}>
               {isSpeaking ? 'Stop' : 'Hear letter'}
             </Text>
           </TouchableOpacity>
@@ -190,21 +249,23 @@ export default function LearnScreen({ alphabetId, onBack }) {
         </TouchableOpacity>
 
         <View style={styles.navDots}>
-          {letters.slice(Math.max(0, index - 2), Math.min(total, index + 3)).map((_, i) => {
-            const dotIndex = Math.max(0, index - 2) + i;
-            return (
-              <TouchableOpacity key={dotIndex} onPress={() => goTo(dotIndex)}>
-                <View
-                  style={[
-                    styles.dot,
-                    dotIndex === index
-                      ? { backgroundColor: alphabet.color, width: 20 }
-                      : { backgroundColor: '#32344f' },
-                  ]}
-                />
-              </TouchableOpacity>
-            );
-          })}
+          {letters
+            .slice(Math.max(0, index - 2), Math.min(total, index + 3))
+            .map((_, i) => {
+              const dotIndex = Math.max(0, index - 2) + i;
+              return (
+                <TouchableOpacity key={dotIndex} onPress={() => goTo(dotIndex)}>
+                  <View
+                    style={[
+                      styles.dot,
+                      dotIndex === index
+                        ? { backgroundColor: alphabet.color, width: 20 }
+                        : { backgroundColor: '#32344f' },
+                    ]}
+                  />
+                </TouchableOpacity>
+              );
+            })}
         </View>
 
         <TouchableOpacity onPress={next} style={styles.navBtn} activeOpacity={0.75}>

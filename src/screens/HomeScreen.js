@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,57 +7,40 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
-  Animated,
+  Dimensions,
+  TextInput,
 } from 'react-native';
 import { ALPHABET_LIST } from '../data/alphabets';
 
+const { width } = Dimensions.get('window');
+
+const getNumColumns = () => {
+  if (width < 600) return 2;
+  if (width < 900) return 3;
+  return 4;
+};
+
 export default function HomeScreen({ onSelectAlphabet }) {
-  const fade = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
+  const [numColumns, setNumColumns] = useState(getNumColumns());
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, {
-        toValue: 1,
-        duration: 650,
-        useNativeDriver: true,
-      }),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, { toValue: 1, duration: 1800, useNativeDriver: true }),
-          Animated.timing(pulse, { toValue: 0, duration: 1800, useNativeDriver: true }),
-        ])
-      ),
-    ]).start();
-  }, [fade, pulse]);
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setNumColumns(getNumColumns());
+    });
+    return () => subscription?.remove();
+  }, []);
 
-  const titleScale = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.03],
-  });
+  const filteredData = ALPHABET_LIST.filter((item) =>
+    item.name.toLowerCase().includes(search.toLowerCase()) ||
+    item.nativeName.toLowerCase().includes(search.toLowerCase())
+  );
 
-  const headerStyle = {
-    opacity: fade,
-    transform: [
-      {
-        translateY: fade.interpolate({
-          inputRange: [0, 1],
-          outputRange: [18, 0],
-        }),
-      },
-      { scale: titleScale },
-    ],
-  };
-
-  const renderItem = ({ item, index }) => {
-    const sample = item.letters.slice(0, 5).map((l) => l.char).join('  ');
+  const renderItem = ({ item }) => {
+    const sample = item.letters.slice(0, 3).map((l) => l.char).join(' ');
     return (
       <TouchableOpacity
-        style={[
-          styles.card,
-          { borderColor: item.color + '88', shadowColor: item.color },
-          index % 2 === 0 && styles.cardOffset,
-        ]}
+        style={[styles.card, { borderColor: item.color + '88', shadowColor: item.color }]}
         onPress={() => onSelectAlphabet(item.id)}
         activeOpacity={0.82}
       >
@@ -65,20 +48,24 @@ export default function HomeScreen({ onSelectAlphabet }) {
         <View style={styles.cardBody}>
           <View style={styles.cardHeader}>
             <Text style={styles.flag}>{item.flag}</Text>
-            <View style={styles.cardTitles}>
-              <Text style={styles.cardName}>{item.name}</Text>
-              <Text style={styles.cardNative}>{item.nativeName}</Text>
-            </View>
-            <View style={[styles.countBadge, { backgroundColor: item.color + '22' }]}> 
-              <Text style={[styles.countText, { color: item.color }]}> 
+            <View style={[styles.countBadge, { backgroundColor: item.color + '22' }]}>
+              <Text style={[styles.countText, { color: item.color }]}>
                 {item.letters.length}
               </Text>
             </View>
           </View>
+          <Text style={styles.cardName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={styles.cardNative} numberOfLines={1}>
+            {item.nativeName}
+          </Text>
           <Text style={styles.sampleChars} numberOfLines={1}>
             {sample}
           </Text>
-          <Text style={styles.description}>{item.description}</Text>
+          <Text style={styles.description} numberOfLines={2}>
+            {item.description}
+          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -91,17 +78,32 @@ export default function HomeScreen({ onSelectAlphabet }) {
         <View style={styles.heroCircle} />
         <View style={[styles.heroCircle, styles.heroCircleSmall]} />
       </View>
-      <Animated.View >
+      <View style={styles.header}>
         <Text style={styles.title}>Alphabet Learn</Text>
         <Text style={styles.subtitle}>Choose a script to study</Text>
-      </Animated.View>
-      <FlatList
-        data={ALPHABET_LIST}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-      />
+        <TextInput
+          style={styles.searchBar}
+          placeholder="Search languages..."
+          placeholderTextColor="#7c86c1"
+          value={search}
+          onChangeText={setSearch}
+        />
+      </View>
+      {filteredData.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No languages found</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredData}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          numColumns={numColumns}
+          columnWrapperStyle={styles.columnWrapper}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -134,95 +136,114 @@ const styles = StyleSheet.create({
     right: -40,
   },
   header: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   title: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: '900',
     color: '#f8f9ff',
-    letterSpacing: -1,
+    letterSpacing: -0.5,
     textShadowColor: '#5b8cff55',
     textShadowOffset: { width: 0, height: 4 },
     textShadowRadius: 18,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#9da7ff',
-    marginTop: 8,
+    marginTop: 6,
     letterSpacing: 0.6,
+    marginBottom: 12,
   },
-  list: {
-    paddingHorizontal: 16,
+  searchBar: {
+    backgroundColor: '#111428',
+    borderWidth: 1,
+    borderColor: '#5b8cff44',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#f8f9ff',
+    fontSize: 14,
+  },
+  listContent: {
+    paddingHorizontal: 8,
     paddingBottom: 40,
+  },
+  columnWrapper: {
     gap: 16,
+    paddingHorizontal: 8,
+    marginBottom: 16,
   },
   card: {
+    flex: 1,
     backgroundColor: '#111428',
-    borderRadius: 26,
+    borderRadius: 20,
     borderWidth: 1,
-    flexDirection: 'row',
     overflow: 'hidden',
     elevation: 6,
     shadowOpacity: 0.16,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
-  },
-  cardOffset: {
-    transform: [{ translateX: -4 }],
+    minHeight: 240,
   },
   colorBar: {
-    width: 6,
-    borderTopLeftRadius: 26,
-    borderBottomLeftRadius: 26,
+    height: 4,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   cardBody: {
     flex: 1,
-    padding: 22,
-    gap: 10,
+    padding: 14,
+    gap: 8,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   flag: {
-    fontSize: 28,
+    fontSize: 24,
   },
-  cardTitles: {
-    flex: 1,
+  countBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  countText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   cardName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     color: '#ffffff',
   },
   cardNative: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#9aa1cc',
-    marginTop: 2,
-  },
-  countBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
-  },
-  countText: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   sampleChars: {
-    fontSize: 22,
+    fontSize: 18,
     color: '#dfe5ff',
-    letterSpacing: 1.7,
+    letterSpacing: 1,
     fontWeight: '400',
+    marginTop: 4,
   },
   description: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#7c86c1',
-    letterSpacing: 0.4,
-    lineHeight: 18,
-    maxWidth: '90%',
+    letterSpacing: 0.3,
+    lineHeight: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#9da7ff',
   },
 });
