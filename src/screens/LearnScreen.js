@@ -20,6 +20,8 @@ export default function LearnScreen({ alphabetId, onBack }) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [shuffled, setShuffled] = useState(false);
   const [letters, setLetters] = useState(alphabet.letters);
+  const [combosMode, setCombosMode] = useState(false);
+  const [currentCombo, setCurrentCombo] = useState(null);
   const soundScale = useRef(new Animated.Value(1)).current;
   const contentAnim = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(0)).current;
@@ -98,7 +100,32 @@ export default function LearnScreen({ alphabetId, onBack }) {
     ]).start();
   }, [letter, contentAnim, soundScale]);
 
+  const generateNewCombo = useCallback(() => {
+    const cons = alphabet.combinationConsonants;
+    const vows = alphabet.combinationVowels;
+    const consonant = cons[Math.floor(Math.random() * cons.length)];
+    const vowel = vows[Math.floor(Math.random() * vows.length)];
+    // Unicode formula: 0xAC00 + (choseong * 21 + jungseong) * 28
+    const syllable = String.fromCharCode(0xAC00 + (consonant.choseong * 21 + vowel.jungseong) * 28);
+    setCurrentCombo({ consonant, vowel, syllable });
+    Speech.stop();
+    setIsSpeaking(false);
+    contentAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(contentAnim, { toValue: 1, duration: 350, useNativeDriver: true }),
+      Animated.spring(soundScale, { toValue: 1, friction: 8, useNativeDriver: true }),
+    ]).start();
+  }, [alphabet, contentAnim, soundScale]);
+
+  useEffect(() => {
+    if (combosMode) {
+      generateNewCombo();
+    }
+  }, [combosMode]);
+
   const speakLetter = useCallback(async () => {
+    const speakText = combosMode && currentCombo ? currentCombo.syllable : letter.speak;
+
     if (isSpeaking) {
       await Speech.stop();
       setIsSpeaking(false);
@@ -112,7 +139,7 @@ export default function LearnScreen({ alphabetId, onBack }) {
 
     setIsSpeaking(true);
     try {
-      await Speech.speak(letter.speak, {
+      await Speech.speak(speakText, {
         language: alphabet.language,
         pitch: 1.0,
         rate: 0.78,
@@ -128,7 +155,7 @@ export default function LearnScreen({ alphabetId, onBack }) {
     } catch {
       setIsSpeaking(false);
     }
-  }, [letter, alphabet, isSpeaking]);
+  }, [letter, alphabet, isSpeaking, combosMode, currentCombo, soundScale]);
 
   const toggleShuffle = () => {
     if (shuffled) {
@@ -146,6 +173,17 @@ export default function LearnScreen({ alphabetId, onBack }) {
     setIndex(0);
     Speech.stop();
     setIsSpeaking(false);
+  };
+
+  const toggleCombosMode = () => {
+    Speech.stop();
+    setIsSpeaking(false);
+    if (combosMode) {
+      setCombosMode(false);
+      setCurrentCombo(null);
+    } else {
+      setCombosMode(true);
+    }
   };
 
   const progress = (index + 1) / total;
@@ -197,28 +235,84 @@ export default function LearnScreen({ alphabetId, onBack }) {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.progressTrack}>
-        <View
-          style={[
-            styles.progressFill,
-            { width: `${progress * 100}%`, backgroundColor: alphabet.color },
-          ]}
-        />
-      </View>
-      <Text style={styles.progressLabel}>
-        {index + 1} / {total}
-      </Text>
+      {alphabet.hasCombinations && (
+        <View style={styles.modeToggle}>
+          <TouchableOpacity
+            onPress={() => combosMode && toggleCombosMode()}
+            style={[styles.modeTab, !combosMode && { borderBottomColor: alphabet.color }]}
+          >
+            <Text style={[styles.modeTabText, !combosMode && { color: alphabet.color }]}>
+              Letters
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => !combosMode && toggleCombosMode()}
+            style={[styles.modeTab, combosMode && { borderBottomColor: alphabet.color }]}
+          >
+            <Text style={[styles.modeTabText, combosMode && { color: alphabet.color }]}>
+              Combos
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!combosMode && (
+        <>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${progress * 100}%`, backgroundColor: alphabet.color },
+              ]}
+            />
+          </View>
+          <Text style={styles.progressLabel}>
+            {index + 1} / {total}
+          </Text>
+        </>
+      )}
 
       <Animated.View
         style={[styles.cardArea, contentTransform]}
-        {...panResponder.panHandlers}
+        {...(combosMode ? {} : panResponder.panHandlers)}
       >
-        <FlashCard
-          key={`${alphabetId}-${index}`}
-          letter={letter}
-          color={alphabet.color}
-          isRTL={isRTL}
-        />
+        {!combosMode ? (
+          <FlashCard
+            key={`${alphabetId}-${index}`}
+            letter={letter}
+            color={alphabet.color}
+            isRTL={isRTL}
+          />
+        ) : currentCombo ? (
+          <View
+            style={[
+              styles.comboCard,
+              { borderColor: alphabet.color + 'bb', backgroundColor: alphabet.color + '11' },
+            ]}
+          >
+            <Text style={styles.comboHint}>syllable drill</Text>
+            <Text style={[styles.comboSyllable, { color: alphabet.color }]}>
+              {currentCombo.syllable}
+            </Text>
+            <Text style={styles.comboRoman}>
+              {currentCombo.consonant.roman}{currentCombo.vowel.romanized}
+            </Text>
+            <View style={[styles.comboDivider, { backgroundColor: alphabet.color + '44' }]} />
+            <View style={styles.comboBreakdown}>
+              <View style={styles.comboJamoBox}>
+                <Text style={styles.comboJamoChar}>{currentCombo.consonant.char}</Text>
+                <Text style={styles.comboJamoRoman}>{currentCombo.consonant.romanized}</Text>
+                <Text style={styles.comboJamoType}>consonant</Text>
+              </View>
+              <Text style={styles.comboCross}>+</Text>
+              <View style={styles.comboJamoBox}>
+                <Text style={styles.comboJamoChar}>{currentCombo.vowel.char}</Text>
+                <Text style={styles.comboJamoRoman}>{currentCombo.vowel.romanized}</Text>
+                <Text style={styles.comboJamoType}>vowel</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
       </Animated.View>
 
       <View style={styles.soundRow}>
@@ -236,43 +330,55 @@ export default function LearnScreen({ alphabetId, onBack }) {
               {isSpeaking ? '■' : '♪'}
             </Text>
             <Text style={[styles.soundLabel, { color: alphabet.color }]}>
-              {isSpeaking ? 'Stop' : 'Hear letter'}
+              {isSpeaking ? 'Stop' : combosMode ? 'Hear syllable' : 'Hear letter'}
             </Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
 
-      <View style={styles.navRow}>
-        <TouchableOpacity onPress={prev} style={styles.navBtn} activeOpacity={0.75}>
-          <Text style={styles.navArrow}>‹</Text>
-          <Text style={styles.navLabel}>prev</Text>
-        </TouchableOpacity>
-
-        <View style={styles.navDots}>
-          {letters
-            .slice(Math.max(0, index - 2), Math.min(total, index + 3))
-            .map((_, i) => {
-              const dotIndex = Math.max(0, index - 2) + i;
-              return (
-                <TouchableOpacity key={dotIndex} onPress={() => goTo(dotIndex)}>
-                  <View
-                    style={[
-                      styles.dot,
-                      dotIndex === index
-                        ? { backgroundColor: alphabet.color, width: 20 }
-                        : { backgroundColor: '#32344f' },
-                    ]}
-                  />
-                </TouchableOpacity>
-              );
-            })}
+      {combosMode ? (
+        <View style={styles.newComboRow}>
+          <TouchableOpacity
+            style={[styles.newComboBtn, { borderColor: alphabet.color + '88' }]}
+            onPress={generateNewCombo}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.newComboBtnText, { color: alphabet.color }]}>⟳  New Combo</Text>
+          </TouchableOpacity>
         </View>
+      ) : (
+        <View style={styles.navRow}>
+          <TouchableOpacity onPress={prev} style={styles.navBtn} activeOpacity={0.75}>
+            <Text style={styles.navArrow}>‹</Text>
+            <Text style={styles.navLabel}>prev</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity onPress={next} style={styles.navBtn} activeOpacity={0.75}>
-          <Text style={styles.navLabel}>next</Text>
-          <Text style={styles.navArrow}>›</Text>
-        </TouchableOpacity>
-      </View>
+          <View style={styles.navDots}>
+            {letters
+              .slice(Math.max(0, index - 2), Math.min(total, index + 3))
+              .map((_, i) => {
+                const dotIndex = Math.max(0, index - 2) + i;
+                return (
+                  <TouchableOpacity key={dotIndex} onPress={() => goTo(dotIndex)}>
+                    <View
+                      style={[
+                        styles.dot,
+                        dotIndex === index
+                          ? { backgroundColor: alphabet.color, width: 20 }
+                          : { backgroundColor: '#32344f' },
+                      ]}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+          </View>
+
+          <TouchableOpacity onPress={next} style={styles.navBtn} activeOpacity={0.75}>
+            <Text style={styles.navLabel}>next</Text>
+            <Text style={styles.navArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -343,6 +449,28 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: '#888',
   },
+  modeToggle: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1f2240',
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    marginBottom: -1,
+  },
+  modeTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: '#4a5070',
+  },
   progressTrack: {
     height: 4,
     backgroundColor: '#14172a',
@@ -368,6 +496,70 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     justifyContent: 'center',
   },
+  comboCard: {
+    flex: 1,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+  },
+  comboHint: {
+    fontSize: 11,
+    color: '#4a5070',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  comboSyllable: {
+    fontSize: 110,
+    fontWeight: '300',
+    lineHeight: 128,
+  },
+  comboRoman: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#c5ccf0',
+    marginBottom: 20,
+    letterSpacing: 1,
+  },
+  comboDivider: {
+    width: '50%',
+    height: 1,
+    marginBottom: 20,
+  },
+  comboBreakdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  comboJamoBox: {
+    alignItems: 'center',
+    minWidth: 64,
+  },
+  comboJamoChar: {
+    fontSize: 34,
+    color: '#c5ccf0',
+    fontWeight: '500',
+  },
+  comboCross: {
+    fontSize: 22,
+    color: '#4a5070',
+  },
+  comboJamoRoman: {
+    fontSize: 13,
+    color: '#8b93b6',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  comboJamoType: {
+    fontSize: 10,
+    color: '#3a4060',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
   soundRow: {
     alignItems: 'center',
     paddingBottom: 16,
@@ -390,6 +582,24 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   soundLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  newComboRow: {
+    alignItems: 'center',
+    paddingBottom: 26,
+    paddingTop: 6,
+  },
+  newComboBtn: {
+    paddingHorizontal: 30,
+    paddingVertical: 14,
+    borderRadius: 100,
+    borderWidth: 1.6,
+    backgroundColor: '#0d1020',
+  },
+  newComboBtnText: {
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.6,
